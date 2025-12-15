@@ -10,9 +10,8 @@ import time
 import os
 
 # ==================== تنظیمات ====================
-API_URL = "https://call2.tgju.org/ajax.json"
+API_URL = "https://call2.tgju.org/ajax.json"  # بدون rev برای بروزرسانی بهتر
 
-# تنظیمات تلگرام (حتما پر کن)
 TELEGRAM_TOKEN = "8112942958:AAH8Hbg0cE7MRtzkg19isBZLLN08o0ikiqQ"
 TELEGRAM_CHAT_ID = "1157963402"
 
@@ -20,9 +19,12 @@ BUY_FEE = 0.005
 SELL_FEE = 0.005
 MIN_PROFIT_MARGIN = 0.01
 INITIAL_CAPITAL = 20000000  # ریال
-CHECK_INTERVAL = 60
+CHECK_INTERVAL = 60  # هر 60 ثانیه چک قیمت
 SEQ_LEN = 30
 MODEL_PATH = "gold_tgju_model.pth"
+
+# متغیر برای کنترل ارسال قیمت ساعتی
+last_hourly_report = datetime.now().replace(minute=0, second=0, microsecond=0)  # شروع از ساعت جاری
 # =================================================
 
 def send_telegram_message(text):
@@ -33,12 +35,10 @@ def send_telegram_message(text):
     payload = {"chat_id": TELEGRAM_CHAT_ID, "text": text, "parse_mode": "HTML"}
     try:
         requests.post(url, data=payload, timeout=10)
-    except:
-        pass
+    except Exception as e:
+        print(f"خطا در ارسال تلگرام: {e}")
 
-# دریافت قیمت طلا مستقیم از tgju API
-send_telegram_message("start trading")
-
+# دریافت قیمت طلا
 def get_live_prices():
     try:
         response = requests.get(API_URL, timeout=10)
@@ -55,22 +55,18 @@ def get_live_prices():
             
             if price_str is None:
                 print("قیمت طلا پیدا نشد!")
-                return None, None, None
+                return None
             
-            # حذف کاما
             price_rial = int(price_str.replace(",", ""))
-            
-            return price_rial, 0, 0  # مستقیم ریال برای هر گرم
+            return price_rial
         else:
             print(f"خطا در API: {response.status_code}")
-            return None, None, None
+            return None
     except Exception as e:
         print(f"خطا: {e}")
-        return None, None, None
+        return None
 
-# ... بقیه کد بدون تغییر ...
-
-# مدل ساده‌شده (فقط با قیمت طلا)
+# مدل و توابع (همان قبلی — ساده‌شده)
 class GoldDataset(Dataset):
     def __init__(self, data, seq_len=SEQ_LEN):
         self.data = data
@@ -87,7 +83,7 @@ class SimpleLSTM(nn.Module):
         self.fc = nn.Linear(50, 1)
 
     def forward(self, x):
-        x = x.unsqueeze(2)  # برای single feature
+        x = x.unsqueeze(2)
         _, (h, _) = self.lstm(x)
         return self.fc(h.squeeze(0))
 
@@ -143,23 +139,26 @@ price_history_today = []
 model, scaler = load_model()
 last_retrain = current_day
 
-print("بات طلا با API tgju.org شروع شد | سرمایه اولیه:", current_cash, "ریال")
+print("بات طلا با گزارش ساعتی شروع شد | سرمایه اولیه:", current_cash, "ریال")
 
 while True:
     now = datetime.now()
 
+    # ریست روز
     if now.date() != current_day:
         current_day = now.date()
         has_bought_today = False
         buy_price = 0
         price_history_today = []
+        last_hourly_report = now.replace(minute=0, second=0, microsecond=0)
         print(f"\nروز جدید: {current_day}")
 
+    # آموزش مجدد هفتگی
     if (current_day - last_retrain).days >= 7 and len(price_history_today) > 100:
         model, scaler = train_model(price_history_today)
         last_retrain = current_day
 
-    gold, _, _ = get_live_prices()
+    gold = get_live_prices()
     if gold is None or gold == 0:
         time.sleep(CHECK_INTERVAL)
         continue
@@ -167,7 +166,18 @@ while True:
     price_history_today.append(gold)
     print(f"{now.strftime('%H:%M:%S')} | طلا ۱۸ عیار: {gold:,} ریال/گرم")
 
+    # گزارش ساعتی قیمت
+    current_hour = now.replace(minute=0, second=0, microsecond=0)
+    if current_hour > last_hourly_report:
+        hourly_msg = f"گزارش ساعتی قیمت طلا\n" \
+                     f"قیمت فعلی: {gold:,} ریال/گرم\n" \
+                     f"زمان: {now.strftime('%H:%M - %Y/%m/%d')}\n" \
+                     f"سرمایه فعلی: {current_cash:,.0f} ریال"
+        send_telegram_message(hourly_msg)
+        print("گزارش ساعتی ارسال شد")
+        last_hourly_report = current_hour
 
+    # سیگنال خرید
     if not has_bought_today and len(price_history_today) >= SEQ_LEN:
         predicted_low = predict_low_price(model, scaler, price_history_today)
         if predicted_low and gold <= predicted_low * 1.003:
@@ -176,19 +186,20 @@ while True:
             current_cash = 0
             buy_price = gold
             has_bought_today = True
-            msg = f"🚨 سیگنال خرید!\nقیمت فعلی: {gold:,} ریال\nپیش‌بینی پایین‌ترین: {predicted_low:,.0f}\nمقدار: {current_gold_grams:.4f} گرم\nبرو میلی‌گلد خرید کن!"
+            msg = f"سیگنال خرید!\nقیمت: {gold:,} ریال\nپیش‌بینی پایین‌ترین: {predicted_low:,.0f}\nمقدار خرید: {current_gold_grams:.4f} گرم\nبرو میلی‌گلد خرید کن! 🚀"
             send_telegram_message(msg)
             print(msg)
 
+    # سیگنال فروش
     if has_bought_today:
         gross = gold * current_gold_grams
         net = gross * (1 - SELL_FEE)
         cost = buy_price * current_gold_grams * (1 + BUY_FEE)
         profit_pct = (net - cost) / cost if cost > 0 else 0
         if profit_pct > MIN_PROFIT_MARGIN:
-            current_cash = net
             profit_rial = net - cost
-            msg = f"🔔 سیگنال فروش!\nقیمت فروش: {gold:,} ریال\nسود: {profit_pct:.2%} ({profit_rial:,.0f} ریال)\nسرمایه جدید: {current_cash:,.0f} ریال\nبرو میلی‌گلد بفروش!"
+            current_cash = net
+            msg = f"سیگنال فروش!\nقیمت فروش: {gold:,} ریال\nسود: {profit_pct:.2%} ({profit_rial:,.0f} ریال)\nسرمایه جدید: {current_cash:,.0f} ریال\nبرو میلی‌گلد بفروش! 💰"
             send_telegram_message(msg)
             print(msg)
             current_gold_grams = 0
