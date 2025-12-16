@@ -10,7 +10,7 @@ import time
 import os
 
 # ==================== تنظیمات ====================
-API_URL = "https://call2.tgju.org/ajax.json"  # بدون rev برای بروزرسانی بهتر
+API_URL = "https://call2.tgju.org/ajax.json?rev=pW3gXxQHLWzPwqWvDn9t2j3OiRV5lX0luzxK7CFciVyxBY0wOIev9c8brsk"  # بدون rev برای بروزرسانی بهتر
 
 TELEGRAM_TOKEN = "8112942958:AAH8Hbg0cE7MRtzkg19isBZLLN08o0ikiqQ"
 TELEGRAM_CHAT_ID = "1157963402"
@@ -24,7 +24,7 @@ SEQ_LEN = 30
 MODEL_PATH = "gold_tgju_model.pth"
 
 # متغیر برای کنترل ارسال قیمت ساعتی
-last_hourly_report = datetime.now().replace(minute=0, second=0, microsecond=0)  # شروع از ساعت جاری
+last_hourly_report = (datetime.now() - timedelta(hours=1)).replace(minute=0, second=0, microsecond=0)  # شروع از ساعت جاری
 # =================================================
 
 def send_telegram_message(text):
@@ -168,13 +168,16 @@ while True:
 
     # گزارش ساعتی قیمت
     current_hour = now.replace(minute=0, second=0, microsecond=0)
+    
     if current_hour > last_hourly_report:
-        hourly_msg = f"گزارش ساعتی قیمت طلا\n" \
+        hourly_msg = f"<b>گزارش ساعتی قیمت طلا</b>\n\n" \
                      f"قیمت فعلی: {gold:,} ریال/گرم\n" \
                      f"زمان: {now.strftime('%H:%M - %Y/%m/%d')}\n" \
                      f"سرمایه فعلی: {current_cash:,.0f} ریال"
+        
         send_telegram_message(hourly_msg)
-        print("گزارش ساعتی ارسال شد")
+        print(f"گزارش ساعتی ارسال شد - {current_hour.strftime('%H:%M')}")
+        
         last_hourly_report = current_hour
 
     # سیگنال خرید
