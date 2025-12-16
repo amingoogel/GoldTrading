@@ -6,7 +6,7 @@ import time
 INITIAL_CAPITAL = 100_000_000  # ریال
 BUY_FEE = 0.005
 SELL_FEE = 0.005
-MIN_PROFIT_MARGIN = 0.01
+MIN_PROFIT_MARGIN = 0.005
 SEQ_LEN = 10  # برای تست کوتاه‌تر کردیم
 
 # داده‌های تست واقعی
@@ -46,7 +46,7 @@ for i, gold in enumerate(test_prices):
     if not has_bought_today and len(price_history_today) >= SEQ_LEN:
         # شبیه‌سازی پیش‌بینی ساده: میانگین + کمی کمتر از پایین‌ترین اخیر
         predicted_low = min(price_history_today[-SEQ_LEN:]) * 1.001
-        if gold <= predicted_low * 1.003:
+        if gold <= predicted_low * 1.005:
             buy_amount = current_cash / (1 + BUY_FEE)
             current_gold_grams = buy_amount / gold
             current_cash = 0

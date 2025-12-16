@@ -140,7 +140,7 @@ model, scaler = load_model()
 last_retrain = current_day
 
 print("بات طلا با گزارش ساعتی شروع شد | سرمایه اولیه:", current_cash, "ریال")
-
+send_telegram_message("start!")
 while True:
     now = datetime.now()
 
